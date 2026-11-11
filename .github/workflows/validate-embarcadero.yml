@@ -1,0 +1,30 @@
+name: Validate Embarcadero source contracts
+
+on:
+  push:
+    paths:
+      - 'embarcadero/**'
+      - '.github/workflows/validate-embarcadero.yml'
+      - '.github/workflows/build-embarcadero.yml'
+      - '.github/workflows/release.yml'
+  pull_request:
+    paths:
+      - 'embarcadero/**'
+      - '.github/workflows/validate-embarcadero.yml'
+      - '.github/workflows/build-embarcadero.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contracts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Metadata, package and build-script contracts (no Delphi compiler)
+        run: python -B -m unittest discover -s embarcadero/tests -p "test_*.py" -v

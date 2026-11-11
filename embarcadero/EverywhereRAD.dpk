@@ -1,0 +1,20 @@
+package EverywhereRAD;
+
+{$DESCRIPTION 'EveryWhere Harness for RAD Studio (experimental)'}
+{$DESIGNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  vcl,
+  vcledge,
+  designide;
+
+contains
+  Everywhere.Register in 'src\Everywhere.Register.pas',
+  Everywhere.Window in 'src\Everywhere.Window.pas',
+  Everywhere.Settings in 'src\Everywhere.Settings.pas',
+  Everywhere.Runtime in 'src\Everywhere.Runtime.pas',
+  Everywhere.Protocol in 'src\Everywhere.Protocol.pas';
+
+end.

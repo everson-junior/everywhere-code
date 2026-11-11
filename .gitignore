@@ -17,3 +17,11 @@ eclipse/update-site/target/
 # Visual Studio build outputs
 visualstudio/**/bin/
 visualstudio/**/obj/
+
+# RAD Studio local build outputs
+embarcadero/build/
+embarcadero/**/__pycache__/
+embarcadero/**/*.dcu
+embarcadero/**/*.local
+embarcadero/**/*.identcache
+embarcadero/**/__history/

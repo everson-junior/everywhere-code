@@ -1,0 +1,95 @@
+name: Build RAD Studio package
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'IDE/compiler target (requires the matching licensed runner)'
+        required: true
+        type: choice
+        default: rad13-win32
+        options:
+          - rad12-win32
+          - rad13-win32
+          - rad13-win64
+  workflow_call:
+    inputs:
+      target:
+        description: 'Matching runner label: rad12-win32, rad13-win32 or rad13-win64'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Never execute pull-request code on the licensed self-hosted machine.
+concurrency:
+  group: radstudio-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.target.outputs.platform }}
+    steps:
+      - name: Validate target and opt-in
+        id: target
+        env:
+          TARGET: ${{ inputs.target }}
+          ENABLED: ${{ vars.RADSTUDIO_CI_ENABLED }}
+        shell: bash
+        run: |
+          case "$TARGET" in
+            rad12-win32|rad13-win32) echo 'platform=Win32' >> "$GITHUB_OUTPUT" ;;
+            rad13-win64) echo 'platform=Win64' >> "$GITHUB_OUTPUT" ;;
+            *) echo '::error::Unsupported RAD Studio target'; exit 1 ;;
+          esac
+          if [ "$ENABLED" != 'true' ]; then
+            echo '::error::Configure the licensed runner and set RADSTUDIO_CI_ENABLED=true first.'
+            exit 1
+          fi
+
+  build:
+    if: vars.RADSTUDIO_CI_ENABLED == 'true'
+    needs: preflight
+    environment: radstudio-ci
+    runs-on: [self-hosted, Windows, radstudio, '${{ inputs.target }}']
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Clean, compile and run native protocol tests
+        env:
+          PLATFORM: ${{ needs.preflight.outputs.platform }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:RADSTUDIO_BDS)) {
+            throw 'Configure RADSTUDIO_BDS in the runner service environment (licensed installation root).'
+          }
+          if (Test-Path -LiteralPath 'embarcadero/build') {
+            Remove-Item -LiteralPath 'embarcadero/build' -Recurse -Force
+          }
+          & ./embarcadero/scripts/build.ps1 -Bds $env:RADSTUDIO_BDS -Platform $env:PLATFORM -RunTests
+      - name: Package only the extension and distribution metadata
+        env:
+          TARGET: ${{ inputs.target }}
+          PLATFORM: ${{ needs.preflight.outputs.platform }}
+        run: |
+          & ./embarcadero/scripts/package.ps1 -Target $env:TARGET -Platform $env:PLATFORM -Commit $env:GITHUB_SHA
+      - name: Upload installable package for testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: everywhere-embarcadero-${{ inputs.target }}-${{ github.sha }}
+          path: embarcadero/build/artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Build result (not IDE certification)
+        run: |
+          '### RAD Studio experimental package' >> $env:GITHUB_STEP_SUMMARY
+          'BPL and native protocol tests built successfully. Download the ZIP in Artifacts; IDE smoke tests remain required. No vendor DLLs or license files are included.' >> $env:GITHUB_STEP_SUMMARY

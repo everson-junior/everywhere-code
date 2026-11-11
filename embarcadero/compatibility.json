@@ -1,0 +1,44 @@
+﻿{
+  "schemaVersion": 1,
+  "integration": "EverywhereRAD",
+  "license": "MIT",
+  "status": "experimental",
+  "package": "EverywhereRAD.dpk",
+  "outputPattern": "build/{platform}/EverywhereRAD.bpl",
+  "targets": [
+    {"product": "RAD Studio", "version": "12", "codename": "Athens", "ideArchitecture": "x86", "platform": "Win32", "status": "candidate", "validated": false},
+    {"product": "RAD Studio", "version": "13", "codename": "Florence", "ideArchitecture": "x86", "platform": "Win32", "status": "candidate", "validated": false},
+    {"product": "RAD Studio", "version": "13", "codename": "Florence", "ideArchitecture": "x64", "platform": "Win64", "status": "candidate", "validated": false}
+  ],
+  "validation": {
+    "licensedCompilerAvailable": false,
+    "nativeBuildExecuted": false,
+    "ideSmokeTestExecuted": false,
+    "automaticBplRelease": false,
+    "evidence": "Local Studio/37.0 contains C++ headers but no dcc executable; not a Delphi build or IDE compatibility proof."
+  },
+  "capabilities": {
+    "modelessWindow": true,
+    "embeddedWebView2": true,
+    "docking": false,
+    "editorTab": false,
+    "reuseExternalService": false,
+    "terminateByPort": false,
+    "fmxDesignerIntegration": false
+  },
+  "policy": {
+    "owner": "Engenharia V&D",
+    "approval": "pending",
+    "windowDays": 30,
+    "milestones": [
+      {"day": 0, "action": "Register vendor release, assign owner and open validation checklist."},
+      {"day": 7, "action": "Triage OTA, compiler, architecture and WebView2 changes."},
+      {"day": 21, "action": "Build with licensed compiler and run protocol plus IDE smoke tests."},
+      {"day": 30, "action": "Publish evidence and support decision or documented blocker; never imply automatic certification."}
+    ]
+  },
+  "references": [
+    "https://docwiki.embarcadero.com/RADStudio/Athens/en/Main_Page",
+    "https://docwiki.embarcadero.com/RADStudio/Florence/en/64-bit_IDE"
+  ]
+}

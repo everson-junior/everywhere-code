@@ -1,4 +1,4 @@
-name: Build & Release Everywhere Extensions (VS Code, Visual Studio, IntelliJ & Eclipse)
+name: Build & Release Everywhere Extensions (VS Code, Visual Studio, IntelliJ, Eclipse & RAD Studio)
 
 on:
   release:
@@ -533,3 +533,13 @@ jobs:
           commit_message: "Deploy p2 Update Site v${{ needs.get-version.outputs.version }} [skip ci]"
 
 
+
+  # Licensed RAD Studio builds are opt-in; other IDE jobs remain independent.
+  build-embarcadero:
+    name: Build RAD Studio BPL (licensed runner)
+    if: vars.RADSTUDIO_CI_ENABLED == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-embarcadero.yml
+    with:
+      target: ${{ vars.RADSTUDIO_CI_TARGET || 'rad13-win32' }}

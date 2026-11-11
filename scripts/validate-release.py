@@ -71,11 +71,28 @@ def check_vscode():
         if not icon_path.exists():
             sys.exit(f"❌ ERRO [VS Code]: Ícone {icon} declarado no package.json não existe no disco!")
 
+def check_embarcadero():
+    root = ROOT / "embarcadero"
+    metadata = json.loads((root / "compatibility.json").read_text(encoding="utf-8-sig"))
+    if not (root / metadata["package"]).is_file():
+        sys.exit("ERRO [RAD Studio]: pacote Delphi ausente")
+    for script in ("build.ps1", "package.ps1"):
+        if not (root / "scripts" / script).is_file():
+            sys.exit(f"ERRO [RAD Studio]: script {script} ausente")
+    workflow = (ROOT / ".github/workflows/build-embarcadero.yml").read_text(encoding="utf-8-sig")
+    for contract in ("workflow_call:", "vars.RADSTUDIO_CI_ENABLED", "contents: read",
+                     "embarcadero/build/artifacts/*.zip", "if-no-files-found: error", "-RunTests"):
+        if contract not in workflow:
+            sys.exit(f"ERRO [RAD Studio]: contrato de CI ausente: {contract}")
+    if "pull_request:" in workflow or "pull_request_target:" in workflow:
+        sys.exit("ERRO [RAD Studio]: build licenciado nao deve executar PRs")
+
 def main():
     print("🔍 Executando validação pré-release do Everywhere-DeepSeek-Harness...")
     check_eclipse()
     check_workflow()
     check_vscode()
+    check_embarcadero()
     print("✅ Todas as validações pré-commit/release passaram com sucesso!")
 
 if __name__ == "__main__":
