@@ -97,7 +97,7 @@ Com isso, os modelos ganham acesso supervisionado ao contexto real do projeto: e
 
 A new Delphi design-time package targets **Delphi and C++Builder** projects in RAD Studio, hosting the same `ewh`/`dsh` web runtime used by the other extensions. Includes lifecycle actions, project-directory binding, WebView2, runtime installation and settings. **Native compilation, IDE smoke tests and full UI parity are pending; this is not a certified release.**
 
-Novo pacote Delphi para projetos **Delphi e C++Builder**, incluindo contexto de projetos FMX sem substituir ferramentas nativas Enterprise. A janela inicial não oferece docking nem aba de editor. A meta de atualização em até 30 dias depende do processo de manutenção e homologação descrito na documentação.
+Novo pacote Delphi para projetos **Delphi e C++Builder**, incluindo contexto de projetos FMX sem substituir ferramentas nativas Enterprise. O painel usa docking nativo da IDE, ainda pendente de validação desta revisão; não há aba de editor. A meta de atualização em até 30 dias depende do processo de manutenção e homologação descrito na documentação.
 
 - [Build, installation and feature matrix / Instalação e funcionalidades](<embarcadero/README.md>)
 - [Compatibility and 30-day maintenance policy / Compatibilidade e manutenção](<embarcadero/docs/COMPATIBILITY.md>)

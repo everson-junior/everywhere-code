@@ -57,6 +57,7 @@ end;
 
 procedure Register;
 begin
+  RegisterHarnessWindow(@ActiveWorkspace);
   RegisterPackageWizard(TEverywhereWizard.Create);
 end;
 
