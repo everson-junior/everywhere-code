@@ -2,7 +2,7 @@
   "name": "everywhere",
   "displayName": "EveryWhere Code",
   "description": "Use EveryWhere Harness: autonomous AI agent directly inside Visual Studio Code sidebar and editor",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "icon": "assets/icon/icon.png",
   "publisher": "everson-junior",
   "license": "MIT",

@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as vscode from 'vscode'
 import { ExtensionConfig, HarnessInfo, HarnessStatus } from './types.ts'
+import { injectHarnessBridge } from './webviewBridge.ts'
 
 interface SavedSession {
   rawUrl: string
@@ -60,6 +61,78 @@ export function loadLastSession(storageRoot?: string): SavedSession | undefined 
     if (!existsSync(file)) return undefined
     const content = readFileSync(file, 'utf8')
     return JSON.parse(content) as SavedSession
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Prefer the authenticated loopback service on 3080 only when it already has
+ * the VS Code bridge and permits framing. Otherwise the proxy is required for
+ * clipboard and external OAuth window handoff.
+ */
+export async function tryDirectHarnessUrl(
+  port: number,
+  saved: SavedSession | undefined,
+  initialCookie = '',
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | undefined> {
+  // The authenticated bridge is injected only by the local proxy. A raw
+  // backend URL cannot provide native clipboard or OAuth popup handoff.
+  if (port !== 3080 || !saved || saved.port !== port || !saved.rawUrl) return undefined
+
+  let directUrl: URL
+  try {
+    directUrl = new URL(saved.rawUrl)
+    if (directUrl.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(directUrl.hostname) ||
+      Number(directUrl.port || 80) !== port) return undefined
+    const token = saved.token || directUrl.searchParams.get('token')
+    if (!token) return undefined
+    directUrl.hostname = '127.0.0.1'
+    directUrl.port = String(port)
+    directUrl.searchParams.set('token', token)
+  } catch {
+    return undefined
+  }
+
+  try {
+    // Exchange the saved launch token from the extension host, not the iframe,
+    // so we can inspect the authenticated document's actual framing policy.
+    let cookie = initialCookie.split(';')[0]
+    if (!cookie) {
+      const authResponse = await fetchImpl(directUrl, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(1500),
+      })
+      cookie = authResponse.headers.get('set-cookie')?.split(';')[0] ?? ''
+      if (authResponse.status !== 303 || !cookie) return undefined
+    }
+
+    const documentUrl = new URL('./', directUrl)
+    documentUrl.search = ''
+    const response = await fetchImpl(documentUrl, {
+      headers: { cookie },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(1500),
+    })
+    if (response.status !== 200) return undefined
+
+    // Never choose the direct address if the authenticated document forbids
+    // embedding. The proxy remains the safe fallback for these servers.
+    if (response.headers.get('x-frame-options')) return undefined
+    const policy = response.headers.get('content-security-policy')
+    const frameAncestors = policy?.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]
+    if (frameAncestors && !frameAncestors.split(/\s+/).includes('*')) return undefined
+
+    const html = await response.text()
+    // The direct Harness page must carry our message adapter already; without
+    // it clipboard/login popups stay trapped in Chromium's nested webview.
+    if (!html.includes('data-ewh-webview-bridge')) return undefined
+    const metaPolicy = html.match(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]+content=["']([^"']+)["']/i)?.[1]
+    const metaAncestors = metaPolicy?.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]
+    if (metaAncestors) return undefined
+
+    return directUrl.toString()
   } catch {
     return undefined
   }
@@ -578,6 +651,17 @@ function createIframeProxy(
         cookie: forwardCookie,
       }
 
+      // The app document needs a small host bridge before its scripts execute.
+      // Request plain HTML; compressed responses cannot be modified as UTF-8.
+      const isDocument = req.method === 'GET' &&
+        (req.headers['sec-fetch-dest'] === 'iframe' || req.headers['sec-fetch-dest'] === 'document' ||
+          (req.headers.accept ?? '').includes('text/html'))
+      if (isDocument) {
+        forwardHeaders['accept-encoding'] = 'identity'
+        delete forwardHeaders['if-none-match']
+        delete forwardHeaders['if-modified-since']
+      }
+
       // Sanitize Origin & sec-fetch-site to satisfy isTrustedApiRequest in api-request-trust.ts
       if (forwardHeaders['origin']) {
         forwardHeaders['origin'] = `http://127.0.0.1:${dshPort}`
@@ -619,8 +703,26 @@ function createIframeProxy(
         delete headers['content-security-policy']
         headers['access-control-allow-origin'] = '*'
 
-        res.writeHead(targetRes.statusCode ?? 200, headers)
-        targetRes.pipe(res)
+        if (isDocument && targetRes.statusCode === 200 &&
+          /^text\/html\b/i.test(String(headers['content-type'])) &&
+          (!headers['content-encoding'] || headers['content-encoding'] === 'identity')) {
+          const chunks: Buffer[] = []
+          targetRes.on('data', (chunk: Buffer) => chunks.push(chunk))
+          targetRes.on('error', () => res.destroy())
+          targetRes.on('end', () => {
+            const html = injectHarnessBridge(Buffer.concat(chunks).toString('utf8'))
+            delete headers['content-length']
+            delete headers['transfer-encoding']
+            delete headers['etag']
+            delete headers['last-modified']
+            headers['cache-control'] = 'no-store'
+            res.writeHead(200, headers)
+            res.end(html)
+          })
+        } else {
+          res.writeHead(targetRes.statusCode ?? 200, headers)
+          targetRes.pipe(res)
+        }
       })
 
       connector.on('error', (err) => {
@@ -831,6 +933,18 @@ export class DshProcessManager {
     if (saved && saved.port === dshPort && saved.rawUrl) {
       rawDshUrl = saved.rawUrl
     }
+
+    const directUrl = await tryDirectHarnessUrl(dshPort, saved, initialCookie)
+    if (directUrl) {
+      this.closeProxy()
+      this.backendPort = dshPort
+      this.setStatus('running', { url: directUrl, port: dshPort, pid: service.pid })
+      this.outputChannel.appendLine(`[EveryWhere Harness] Backend ready at: ${directUrl}`)
+      this.outputChannel.appendLine(`[EveryWhere Harness] Direct webview ready at: ${directUrl}`)
+      return directUrl
+    }
+
+    this.outputChannel.appendLine('[EveryWhere Harness] Direct port 3080 unavailable or not embeddable; using authenticated proxy.')
 
     // Close any previous proxy server
     this.closeProxy()
@@ -1077,6 +1191,18 @@ export class DshProcessManager {
                 )
               }
 
+              const directUrl = await tryDirectHarnessUrl(dshPort, { rawUrl: rawDshUrl, port: dshPort, token, updatedAt: Date.now() }, initialCookie)
+              if (directUrl) {
+                this.closeProxy()
+                this.backendPort = dshPort
+                this.setStatus('running', { url: directUrl, port: dshPort, pid: child.pid })
+                saveLastSession(this.storageRoot, { rawUrl: rawDshUrl, port: dshPort, token })
+                this.outputChannel.appendLine(`[EveryWhere Harness] Direct webview ready at: ${directUrl}`)
+                resolve(directUrl)
+                return
+              }
+
+              this.outputChannel.appendLine('[EveryWhere Harness] Direct port 3080 unavailable or not embeddable; using authenticated proxy.')
               // Create the proxy that auto-injects this cookie and sanitizes origin/sec-fetch-site
               const { server, port: proxyPort } = await createIframeProxy(dshPort, initialCookie)
               this.proxyServer = server

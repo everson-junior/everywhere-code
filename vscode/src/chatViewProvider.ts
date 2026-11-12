@@ -1,6 +1,40 @@
 import * as vscode from 'vscode'
 import { DshProcessManager } from './dshManager.ts'
 import { ExtensionConfig, HarnessInfo } from './types.ts'
+import { escapeHtmlAttribute, isSafeExternalUrl } from './webviewBridge.ts'
+
+/** Only text writes and HTTP(S) links cross the webview/extension boundary. */
+async function handleHostAction(webview: vscode.Webview, data: { command: string; text?: string; requestId?: string; bridgeToken?: string }): Promise<boolean> {
+  if (data.command === 'copy') {
+    if (typeof data.text !== 'string') return true
+    let ok = false
+    try {
+      await vscode.env.clipboard.writeText(data.text)
+      ok = true
+    } catch {
+      void vscode.window.showErrorMessage('Não foi possível copiar para a área de transferência.')
+    }
+    if (typeof data.requestId === 'string') {
+      await webview.postMessage({ type: 'ewh/copy-result', requestId: data.requestId, bridgeToken: data.bridgeToken, ok })
+    } else if (ok) {
+      void vscode.window.showInformationMessage('Texto copiado.')
+    }
+    return true
+  }
+  if (data.command === 'openExternal') {
+    if (isSafeExternalUrl(data.text)) {
+      try {
+        const opened = await vscode.env.openExternal(vscode.Uri.parse(data.text))
+        if (!opened) throw new Error('O VS Code não conseguiu iniciar o navegador externo.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        void vscode.window.showErrorMessage(`Não foi possível abrir o navegador para o login do Antigravity: ${message}`)
+      }
+    }
+    return true
+  }
+  return false
+}
 
 /**
  * Generates the HTML content for the Webview based on current Harness status.
@@ -32,13 +66,26 @@ function getHtmlForStatus(info: HarnessInfo): string {
   </style>
 </head>
 <body>
-  <iframe src="${info.url}" allow="clipboard-read; clipboard-write" sandbox="allow-forms allow-modals allow-popups allow-scripts allow-same-origin"></iframe>
+  <iframe id="harness" title="EveryWhere Harness" src="${escapeHtmlAttribute(info.url)}" allow="clipboard-read; clipboard-write; fullscreen" sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads allow-scripts allow-same-origin"></iframe>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    const frame = document.getElementById('harness');
+    const harnessOrigin = new URL(frame.src).origin;
+    const bridgeToken = '${getNonce()}';
+    frame.addEventListener('load', () => {
+      frame.contentWindow.postMessage({ type: 'ewh/bridge-init' }, harnessOrigin);
+    });
     window.addEventListener('message', (event) => {
       const data = event.data;
-      if (data?.type === 'dsh/open-external' && typeof data.url === 'string') vscode.postMessage({ command: 'openExternal', text: data.url });
-      if (data?.type === 'dsh/copy' && typeof data.text === 'string') vscode.postMessage({ command: 'copy', text: data.text });
+      if (!data || typeof data !== 'object') return;
+      if (event.source === frame.contentWindow && event.origin === harnessOrigin) {
+        if (data.type === 'dsh/open-external' && typeof data.url === 'string') vscode.postMessage({ command: 'openExternal', text: data.url });
+        if (data.type === 'dsh/copy' && typeof data.text === 'string') vscode.postMessage({ command: 'copy', text: data.text, requestId: data.requestId, bridgeToken });
+      } else if (data.type === 'ewh/copy-result' && data.bridgeToken === bridgeToken) {
+        // VS Code forwards host messages from its outer shell, not this window.
+        // The per-render token authenticates replies without trusting that source.
+        frame.contentWindow.postMessage({ type: data.type, requestId: data.requestId, ok: data.ok }, harnessOrigin);
+      }
     });
   </script>
 </body>
@@ -457,7 +504,9 @@ export class EveryWhereHarnessViewProvider implements vscode.WebviewViewProvider
       localResourceRoots: [this.extensionUri],
     }
 
-    webviewView.webview.onDidReceiveMessage(async (data: { command: string; text?: string }) => {
+    webviewView.webview.onDidReceiveMessage(async (data: { command: string; text?: string; requestId?: string; bridgeToken?: string }) => {
+      if (!data || typeof data !== 'object') return
+      if (await handleHostAction(webviewView.webview, data)) return
       switch (data.command) {
         case 'start':
           await vscode.commands.executeCommand('everywhere.startHarness')
@@ -467,12 +516,6 @@ export class EveryWhereHarnessViewProvider implements vscode.WebviewViewProvider
           break
         case 'checkAvailable':
           await vscode.commands.executeCommand('everywhere.checkHarness')
-          break
-        case 'copy':
-          if (data.text) {
-            await vscode.env.clipboard.writeText(data.text)
-            vscode.window.showInformationMessage(`Comando copiado: ${data.text}`)
-          }
           break
         case 'restart':
           await vscode.commands.executeCommand('everywhere.restartHarness')
@@ -485,9 +528,6 @@ export class EveryWhereHarnessViewProvider implements vscode.WebviewViewProvider
           break
         case 'openSettings':
           vscode.commands.executeCommand('everywhere.openSettings')
-          break
-        case 'openExternal':
-          if (data.text) await vscode.env.openExternal(vscode.Uri.parse(data.text))
           break
         case 'showLogs':
           vscode.commands.executeCommand('everywhere.showLogs')
@@ -538,7 +578,9 @@ export function openHarnessInEditorTab(
     panel.webview.html = getHtmlForStatus(info)
   }
 
-  panel.webview.onDidReceiveMessage(async (data: { command: string; text?: string }) => {
+  panel.webview.onDidReceiveMessage(async (data: { command: string; text?: string; requestId?: string; bridgeToken?: string }) => {
+    if (!data || typeof data !== 'object') return
+    if (await handleHostAction(panel.webview, data)) return
     switch (data.command) {
       case 'start':
         await vscode.commands.executeCommand('everywhere.startHarness')
@@ -555,17 +597,11 @@ export function openHarnessInEditorTab(
       case 'checkAvailable':
         await vscode.commands.executeCommand('everywhere.checkHarness')
         break
-      case 'copy':
-        if (data.text) {
-          await vscode.env.clipboard.writeText(data.text)
-          vscode.window.showInformationMessage(`Comando copiado: ${data.text}`)
-        }
+      case 'openEditorTab':
+        panel.reveal(vscode.ViewColumn.Active)
         break
       case 'openSettings':
         vscode.commands.executeCommand('everywhere.openSettings')
-        break
-      case 'openExternal':
-        if (data.text) await vscode.env.openExternal(vscode.Uri.parse(data.text))
         break
       case 'showLogs':
         vscode.commands.executeCommand('everywhere.showLogs')

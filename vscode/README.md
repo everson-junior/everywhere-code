@@ -40,6 +40,14 @@ Run the official **EveryWhere Harness** autonomous AI agent everywhere directly 
 - Configurable custom command/path (e.g. `ewh`, `dsh`, `pnpm dsh`).
 - Configurable port and startup flags.
 
+### Clipboard and webview behavior
+
+The embedded UI runs in an iframe inside a VS Code webview. Text copy buttons are bridged through VS Code's native clipboard API; this does not grant clipboard-read access or change agent approval settings. Downloads are enabled in the inner iframe. Antigravity sign-in links are handed to VS Code's external browser opener instead of relying on a nested webview popup.
+
+The extension tries the authenticated Harness URL on port 3080 when the server permits embedding and the VS Code bridge is available. Otherwise it uses the local authenticated proxy.
+
+After installing an updated extension, run **Developer: Reload Window**. Verify copying a response/code block and pasting into an editor, downloading a file, opening a link, and completing the Antigravity sign-in. Build/unit tests do not replace this VS Code smoke check.
+
 ### Configuration
 
 Open VS Code Settings (`Ctrl+,` or `Cmd+,`) and search for **EveryWhere**:
@@ -98,6 +106,14 @@ O **Everywhere** incorpora e gerencia o motor autêntico do EveryWhere Harness (
 - Detecta automaticamente o comando `ewh` ou `dsh` instalado no `PATH` do sistema ou no armazenamento privado da extensão.
 - Permite configurar comando/caminho personalizado (ex: `ewh`, `dsh`, `pnpm dsh`).
 - Permite personalizar porta e parâmetros de inicialização.
+
+### Cópia e autenticação no webview
+
+O chat roda em um iframe dentro do webview do VS Code. A cópia de texto usa a área de transferência nativa do VS Code; isso não libera leitura da área de transferência nem altera aprovações do agente. Downloads são habilitados no iframe. Os links de login do Antigravity são encaminhados ao navegador externo pelo VS Code, sem depender de um popup aninhado no webview.
+
+A extensão tenta usar o endereço autenticado do Harness na porta 3080 quando o servidor permite incorporação e a ponte VS Code está disponível. Caso contrário, usa o proxy local autenticado.
+
+Após instalar a extensão atualizada, execute **Developer: Reload Window**. Confira copiar uma resposta/bloco de código e colar no editor, baixar um arquivo e concluir o login do Antigravity. Compilação e testes automatizados não substituem essa verificação no VS Code.
 
 ### Configurações
 
