@@ -341,6 +341,7 @@ namespace Everywhere.Services
 
             var options = EverywherePackage.Instance?.Options;
             var port = options?.Port ?? 0;
+
             var checkPort = port > 0 ? port : 3080;
 
             // Check if DSH is already running before spawning a new process
@@ -362,7 +363,7 @@ namespace Everywhere.Services
             var arguments = $"--profile {profileArg} --no-open{portArg}";
 
             var tcs = new TaskCompletionSource<string>();
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(65));
 
             cts.Token.Register(() =>
             {

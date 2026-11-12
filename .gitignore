@@ -25,3 +25,9 @@ embarcadero/**/*.dcu
 embarcadero/**/*.local
 embarcadero/**/*.identcache
 embarcadero/**/__history/
+
+# Local IDE state and generated indexes
+.vscode/launch.json
+.vscode/.advpl/
+package-lock.json
+embarcadero/*.res
