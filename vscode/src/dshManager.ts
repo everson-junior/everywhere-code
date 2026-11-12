@@ -1017,7 +1017,7 @@ export class DshProcessManager {
     return new Promise<string>((resolve, reject) => {
       let isSettled = false
 
-      // 35-second startup timeout safeguard
+      // 65-second startup timeout safeguard (30 extra seconds for slow startups)
       const startupTimer = setTimeout(() => {
         if (!isSettled) {
           isSettled = true
@@ -1026,7 +1026,7 @@ export class DshProcessManager {
           this.setStatus('error', { error: errMsg })
           reject(new Error(errMsg))
         }
-      }, 35000)
+      }, 65000)
 
       try {
         const child = spawnExecutable(command, args, {
