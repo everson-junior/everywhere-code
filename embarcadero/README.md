@@ -1,8 +1,8 @@
 # EveryWhere Harness para RAD Studio — experimental
 
 Pacote Delphi Open Tools API (OTA) para **Delphi e C++Builder**, com menu da IDE,
-janela VCL **modeless** e navegador `TEdgeBrowser` (WebView2). O workspace é o
-diretório do projeto ativo salvo. **Não há docking nem aba de editor nesta etapa.**
+painel VCL **acoplável pela OTA** e navegador `TEdgeBrowser` (WebView2). O workspace
+é o diretório do projeto ativo salvo. **Não há aba de editor nesta etapa.**
 O código novo segue a licença [MIT do repositório](<../LICENSE>).
 
 **Nenhuma versão da IDE está homologada.** Os candidatos são RAD Studio 12 Athens
@@ -17,10 +17,10 @@ O código novo segue a licença [MIT do repositório](<../LICENSE>).
   arquivos DCP isolados não substituem `dcc32.exe`/`dcc64.exe`.
 - Microsoft Edge WebView2 Runtime instalado e `WebView2Loader.dll` da arquitetura
   **da IDE**, obtida dos redistribuíveis oficiais da sua instalação RAD Studio.
-  Configure sua localização conforme a documentação do fornecedor; mantenha a DLL
-  em diretório pesquisável pelo carregador do processo da IDE (por exemplo, um
-  diretório dedicado no `PATH` antes de abrir a IDE). Confirme o carregamento no
-  smoke test: estar ao lado da BPL não garante a busca da DLL por toda versão.
+  O pacote procura explicitamente um loader ao lado da BPL instalada, caso a IDE
+  ainda não tenha carregado um. Use somente o loader oficial correspondente à
+  arquitetura da IDE, nunca uma DLL baixada de fonte desconhecida. Não modifica
+  PATH nem substitui um loader já usado pelo processo da IDE.
   Não copiar a DLL ou qualquer binário proprietário para este repositório.
 - Runtime EveryWhere/DeepSeek Harness (`ewh`/`dsh`) instalado, ou Node.js/npm para a
   instalação explícita pela janela. A versão do runtime deve oferecer perfil web
@@ -28,10 +28,14 @@ O código novo segue a licença [MIT do repositório](<../LICENSE>).
 - Credenciais/configuração de provedores pertencem ao runtime, herdadas do ambiente
   da IDE. Configure-as **antes** de abrir a IDE; não as coloque nas opções do pacote.
 
-No ambiente de desenvolvimento inspecionado, a instalação em
-`C:/Program Files (x86)/Embarcadero/Studio/37.0` contém headers C++ mas não contém
-executáveis `dcc`. Portanto **não houve build Delphi nem smoke test da IDE**.
-Nenhum header ou binário dessa instalação foi copiado.
+O usuário confirmou build/instalação da revisão anterior na IDE RAD Studio 13.2
+Win32 e depois informou docking/renderização funcionando. O erro de início
+anterior era conflito na porta 3080 (`EADDRINUSE`). A revisão atual da barra
+compacta e área web ampliada **ainda exige novo build e smoke test**.
+Os executáveis `dcc` agora existem, mas a Trial recusa compilação por linha de
+comando: `This version of the product does not support command line compiling.`
+Logo o pipeline nativo segue bloqueado por licença; não há contorno implementado.
+Nenhum header, licença ou binário de fornecedor foi incluído no Git.
 
 ## Build manual (PowerShell)
 
@@ -65,7 +69,7 @@ O script não instala o pacote nem publica release.
 2. Instale WebView2 Runtime e disponibilize o loader oficial da arquitetura correta.
 3. Na IDE, abra **Component > Install Packages > Add** e escolha a BPL produzida.
    Os nomes do menu podem variar conforme idioma/versão. Confirme a carga sem erro.
-4. Abra e salve um projeto Delphi ou C++Builder; abra o menu **EveryWhere Harness**.
+4. Abra e salve um projeto Delphi ou C++Builder; abra **Help > EveryWhere Harness**.
    Configure executável/perfil e clique **Iniciar**. Sem projeto salvo ativo o
    runtime não inicia: não há fallback silencioso para outra pasta.
 5. Execute o [checklist de homologação](<docs/COMPATIBILITY.md#checklist-por-alvo>)
@@ -133,10 +137,11 @@ Não execute projetos não confiáveis nem instale runtimes sem verificar sua or
 
 | Recurso | Estado inicial RAD Studio |
 | --- | --- |
-| Menu OTA + janela VCL modeless + WebView2 | Implementado em fonte; validação nativa pendente. |
+| Menu OTA + painel acoplável + WebView2 | Implementado em fonte; nova validação nativa pendente. |
 | Lifecycle, perfil, porta, logs e instalação explícita | Implementado em fonte; smoke tests pendentes. |
 | Projeto Delphi/C++Builder ativo como workspace | Implementado em fonte; exige projeto salvo. |
-| Docking / aba de editor / restauração do layout da IDE | **Não implementado.** |
+| Docking e layout | Host nativo `INTACustomDockableForm`; arraste o título até uma área de docking e salve o desktop da IDE. Validar restauração. |
+| Aba nativa de editor | **Não implementada.** |
 | Reuso de serviço alheio / encerramento por porta | **Não suportado por segurança.** |
 | Integração de designer FireMonkey (FMX) | **Não implementada**; FMX é somente contexto do projeto. |
 | Substituir ferramentas Enterprise | **Fora de escopo**; não duplicar recursos licenciados de análise, banco de dados, modelagem ou depuração. |
@@ -202,4 +207,69 @@ registra a versão do compilador e só então empacota arquivos de uma lista exp
 Não inclui executável dos testes, DCP/DCU, SDKs, WebView2Loader nem licenças de terceiros.
 `build-manifest.json` no ZIP é a evidência do build; os metadados de compatibilidade
 do repositório continuam experimentais até os smoke tests da IDE serem aprovados.
-Nenhum runner/licença foi provisionado e nenhuma BPL foi gerada nesta alteração.
+Um runner local foi registrado, mas o build nativo por CI continua bloqueado pela licença Trial. Nenhuma BPL desta revisão foi gerada ou homologada automaticamente.
+
+## Atualizar a BPL e testar o painel acoplável
+
+1. Pare o Harness e feche seu painel. Desmarque o pacote em **Component > Install
+   Packages** antes de recompilar. Se continuar carregado, salve os projetos e
+   reinicie a IDE com o pacote desmarcado.
+2. Recarregue os arquivos alterados do disco (incluindo o novo
+   [recurso do frame](<src/Everywhere.Window.dfm>)), faça **Build** e instale a BPL.
+3. Abra **Help > EveryWhere Harness**. Agora a janela é um host de docking da IDE;
+   na primeira abertura pode flutuar. Arraste sua barra de título para a lateral
+   da IDE até aparecer o guia de acoplamento. Salve o layout/desktop da IDE.
+   Não há docking automático em uma posição fixa nem acoplamento com um designer.
+4. Abra um projeto salvo e use **Iniciar** na barra compacta. O WebView ocupa
+   toda a área restante: não há rodapé, mensagens permanentes nem painel de logs.
+5. Se ficar vazio, abra **Diagnósticos/Logs** pela barra para consultar estado,
+   HRESULT/WebErrorStatus e logs sanitizados; teste também **Navegador**.
+   Se o navegador externo abrir a interface, foque nas dependências WebView2.
+   **Recarregar** tenta novamente após corrigir dependências; algumas falhas de
+   carregamento de DLL exigem reiniciar a IDE.
+
+Criação/navegação são assíncronas, com espera de 30 segundos e diagnóstico
+disponível pelo botão de logs (destacado quando há falha). A URL autenticada só é consumida depois de `WebViewCreated` e aceitação de
+`Navigate`; não se escreve token nos logs. Não remova CSP nem desabilite segurança
+do navegador para tentar corrigir uma página vazia.
+
+### Barra compacta e área web
+
+As ações Iniciar, Parar, Reiniciar, Recarregar, Navegador, Opções, Instalar e Logs
+usam `TToolBar`/`TActionList`. Os ícones são consultados nas ações e menus da IDE,
+sem copiar recursos gráficos proprietários e **sem executar comandos da IDE**.
+A imagem de Run controla o Harness, não compila nem executa o projeto aberto.
+Botões indisponíveis ficam desabilitados e dicas identificam cada função.
+Se uma versão/tema não oferecer o ícone procurado, o controle mantém uma legenda
+curta em vez de ficar invisível. O título e os controles de docking continuam
+pertencendo à IDE. Redimensionamento/DPI e ícones precisam de teste visual.
+
+Os últimos 500 logs sanitizados ficam somente em memória e são exibidos numa
+janela sob demanda; nenhuma área inferior é reservada. A falha anterior
+`EADDRINUSE` na porta 3080 era conflito com outro processo: use uma porta livre
+nas opções e reinicie, sem encerrar o serviço pertencente a outra IDE.
+
+### Renderização após mover/acoplar o painel
+
+O controller WebView2 fica associado ao HWND do navegador, não apenas ao objeto
+Delphi. A movimentação/docking da IDE pode recriar esse HWND ou alterar os seus
+ancestrais/visibilidade. O painel observa essas mudanças e, após 200 ms de layout
+estável, sincroniza parent, área cliente, visibilidade e posição do controller.
+Não força a exibição em abas ocultas e não recarrega a página em cada resize.
+
+Se o controller não puder ser recuperado, tenta recriar somente a visualização
+uma vez por mudança de host; uma falha persistente exige **Recarregar** e fica
+registrada em Diagnósticos. Isso **não para nem reinicia o runtime**. A recriação
+do navegador pode perder foco, rolagem e texto ainda não enviado da página; a
+sincronização bem-sucedida do controller evita essa recriação.
+
+Após recompilar, testar com uma sessão aberta: flutuante → acoplado → flutuante,
+redimensionar, ocultar/exibir aba, minimizar/restaurar a IDE, mudar monitor/DPI e
+mover durante o início do navegador. Confirmar que o processo do Harness continua
+o mesmo e que não há loop de recarga. A revisão requer validação visual na IDE;
+os contratos estáticos não comprovam renderização nem lifecycle Win32/Win64.
+
+Limitação a verificar: o evento VCL de criação não fornece um identificador de
+cada tentativa assíncrona. Movimentos repetidos enquanto o navegador ainda está
+sendo criado podem exigir **Recarregar** caso uma conclusão atrasada produza erro;
+não há garantia de recuperação automática de todas as sequências de callbacks.

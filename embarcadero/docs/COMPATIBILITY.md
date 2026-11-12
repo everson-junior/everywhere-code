@@ -1,4 +1,4 @@
-﻿# Compatibilidade e política de validação
+# Compatibilidade e política de validação
 
 **Estado: experimental; homologação de todos os alvos pendente.** A fonte de dados
 legível por ferramentas é [compatibility.json](<../compatibility.json>). O código
@@ -31,15 +31,17 @@ Referências oficiais para a avaliação dos candidatos:
 
 ## Evidências e limites atuais
 
-A instalação local `C:/Program Files (x86)/Embarcadero/Studio/37.0` foi inspecionada:
-possui headers C++ mas não executáveis `dcc`. Não foram copiados headers nem
-redistribuíveis. Os testes de contrato não substituem o compilador licenciado.
-Não existem resultados de execução de BPL/IDE que permitam marcar alvos como
-validados. Não há workflow de release automática de BPL sem compilador licenciado.
-A janela inicial é modeless: **sem docking e sem aba de editor**. FMX é apenas
-contexto de projeto; não existe adaptação de designer. Não duplicar ferramentas
-Enterprise licenciadas. A [matriz funcional](<../README.md#paridade-honesta>)
-diferencia implementação em fonte de validação real.
+O usuário confirmou compilação e instalação da revisão anterior via IDE 13.2
+Win32 e depois relatou docking/renderização funcionando. A falha de início
+registrada era conflito na porta 3080 (`EADDRINUSE`). A revisão de barra compacta
+e área web ampliada precisa ser recompilada e retestada.
+A Trial instalada recusa compilação de linha de comando; CI nativa ainda depende
+de licença adequada. Não foram incluídos SDKs/redistribuíveis no repositório.
+Os testes de contrato não substituem o compilador nem homologam os alvos.
+O painel usa `INTACustomDockableForm` e frame VCL: pode ser arrastado para a IDE,
+sem aba de editor. Validar salvar/restaurar layout e descarregar pacote.
+FMX é contexto de projeto; não existe adaptação de designer. Não duplicar
+ferramentas Enterprise licenciadas. Consulte a [matriz funcional](<../README.md#paridade-honesta>).
 
 ## Política proposta D0, D7, D21, D30
 
@@ -72,10 +74,14 @@ executor, data e resultado; não marcar itens somente por inspeção de strings.
       `-RunTests`; preservar logs sanitizados, saída e identificação do commit.
 - [ ] Instalar BPL em **Install Packages**, reiniciar IDE e verificar menu OTA;
       desinstalar e reinstalar sem erro ou dependência de artefato antigo.
-- [ ] Confirmar WebView2 embarcado com loader da arquitetura correta e fallback
+- [ ] Confirmar criação/navegação WebView2 assíncronas, HRESULT acessível em Diagnósticos se faltar loader,
+      parar/reiniciar durante navegação e recuperação via Recarregar; loader da arquitetura correta e fallback
       por navegador externo quando indisponível; registrar falha separadamente.
 - [ ] Projetos Delphi e C++Builder ativos: diretório correto, espaços/Unicode,
       projeto não salvo, ausência de projeto e troca de projeto + Reiniciar.
+- [ ] Docking com sessão aberta: flutuante/acoplado/abas, resize, minimizar/restaurar,
+      monitor/DPI e movimento durante criação WebView2; verificar ausência de tela
+      branca, recarga contínua e mudança do PID do runtime durante docking.
 - [ ] Iniciar/parar/reiniciar/recarregar: interface responsiva, estados coerentes,
       processo próprio encerrado ao fechar janela/IDE, sem processo órfão.
 - [ ] Runtime ausente, instalação explícita, executável inválido, perfil web e
@@ -86,7 +92,7 @@ executor, data e resultado; não marcar itens somente por inspeção de strings.
       INI sem segredos; revisar persistência do perfil WebView2/navegador/runtime.
 - [ ] Validar credenciais herdadas sem imprimir valores e permissões do workspace;
       execução não requer privilégios administrativos desnecessários.
-- [ ] Registrar limitações modeless, ausência de docking/aba editor e FMX contextual;
+- [ ] Testar docking, redimensionamento, fechar/reabrir, layout e ausência de aba editor;
       confirmar que não duplica ferramentas Enterprise.
 - [ ] Revisar política de redistribuição WebView2/Embarcadero: nenhum SDK/header/DLL
       proprietário no Git ou nos artefatos fonte.

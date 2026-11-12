@@ -83,7 +83,8 @@ class MetadataContracts(unittest.TestCase):
         capabilities = self.metadata["capabilities"]
         self.assertIs(capabilities["modelessWindow"], True)
         self.assertIs(capabilities["embeddedWebView2"], True)
-        for field in ("docking", "editorTab", "reuseExternalService", "terminateByPort", "fmxDesignerIntegration"):
+        self.assertIs(capabilities["docking"], True)
+        for field in ("editorTab", "reuseExternalService", "terminateByPort", "fmxDesignerIntegration"):
             self.assertIs(capabilities[field], False, field)
 
 
@@ -106,6 +107,116 @@ class PackageContracts(unittest.TestCase):
         self.assertIsNotNone(requires)
         self.assertTrue({"rtl", "vcl", "vcledge", "designide"}.issubset({name.strip().lower() for name in requires[1].split(",")}))
 
+    def test_docking_frame_resource_and_registration_contract(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        self.assertIn("class(TFrame)", source)
+        self.assertIn("class(TInterfacedObject, INTACustomDockableForm)", source)
+        self.assertIn("{$R Everywhere.Window.dfm}", source)
+        resource = (ROOT / "src/Everywhere.Window.dfm").read_text(encoding="utf-8-sig")
+        self.assertIn("object HarnessFrame: THarnessFrame", resource)
+        for call in ("RegisterDockableForm(HarnessDock)", "CreateDockableForm(HarnessDock)",
+                     "UnregisterDockableForm(HarnessDock)"):
+            self.assertIn(call, source)
+        self.assertRegex(source, r"(?s)\binitialization\s+HarnessFrame\s*:=\s*nil;\s+finalization\s+UnregisterHarnessWindow;")
+
+    def test_compact_toolbar_borrows_native_icons_not_ide_commands(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        self.assertIn("FToolbar := TToolBar.Create(Self)", source)
+        self.assertIn("FActions.Images := Services.ImageList", source)
+        self.assertIn("FToolbar.Images := Services.ImageList", source)
+        self.assertIn("Result.OnExecute := Handler", source)
+        self.assertIn("Button.Action := Result", source)
+        self.assertIn("RunRunCommand", source)
+        self.assertIn("RunResetCommand", source)
+        self.assertIn("FToolbar.ShowCaptions := False", source)
+        self.assertIn("Button.Style := tbsTextButton", source)
+        self.assertIn("FDiagnosticsButton.Style := tbsCheck", source)
+        self.assertIn("Erro - abrir diagnosticos|", source)
+        self.assertNotIn("NativeAction.Execute", source)
+        self.assertNotIn("Button.Action := NativeAction", source)
+
+    def test_webview_uses_all_remaining_space_and_logs_are_on_demand(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        constructor = source.split("constructor THarnessFrame.Create", 1)[1].split("destructor THarnessFrame.Destroy", 1)[0]
+        self.assertIn("FBrowser.Parent := Self", constructor)
+        self.assertIn("FBrowser.Align := alClient", constructor)
+        for forbidden in ("FBrowserHint", "FStatus", "TFlowPanel", "TButton.Create", "TMemo.Create", "alBottom"):
+            self.assertNotIn(forbidden, constructor)
+        self.assertIn("FLogs := TStringList.Create", constructor)
+        self.assertIn("while FLogs.Count >= 500", source)
+        self.assertIn("FreeAndNil(FLogs)", source)
+        diagnostics = source.split("procedure THarnessFrame.DiagnosticsClick", 1)[1].split("procedure THarnessFrame.BrowserError", 1)[0]
+        self.assertIn("TMemo.Create(Dialog)", diagnostics)
+        self.assertIn("Memo.Lines.AddStrings(FLogs)", diagnostics)
+        self.assertIn("Dialog.ShowModal", diagnostics)
+
+    def test_loader_flags_are_declared_without_optional_rtl_symbols(self):
+        # Regression guard for E2003 on RTLs missing the Windows SDK constants.
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        self.assertIn("HarnessLoadLibrarySearchDllLoadDir: DWORD = $00000100;", source)
+        self.assertIn("HarnessLoadLibrarySearchSystem32: DWORD = $00000800;", source)
+        self.assertRegex(source, r"LoadLibraryEx\(PChar\(LoaderPath\), 0,\s*HarnessLoadLibrarySearchDllLoadDir or HarnessLoadLibrarySearchSystem32\)")
+        self.assertNotRegex(source, r"\bLOAD_LIBRARY_SEARCH_(?:DLL_LOAD_DIR|SYSTEM32)\b")
+
+    def test_browser_waits_for_creation_and_reports_navigation_errors(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        self.assertIn("FBrowser.CreateWebView", source)
+        pending = source.split("procedure THarnessFrame.NavigatePending;", 1)[1].split("procedure THarnessFrame.Tick", 1)[0]
+        self.assertIn("not FBrowser.WebViewCreated", pending)
+        self.assertIn("if FBrowser.Navigate(FRuntime.ActiveUrl) then", pending)
+        self.assertIn("FLastUrl := FRuntime.ActiveUrl", pending)
+        self.assertIn("FBrowser.OnNavigationCompleted := NavigationCompleted", source)
+        self.assertIn("IntToHex(Cardinal(AResult), 8)", source)
+        self.assertIn("GetTickCount64 - FBrowserStartedAt >= 30000", source)
+        self.assertIn("FBrowser.CloseWebView", source)
+        self.assertNotIn("SetDllDirectory(", source)
+        self.assertNotIn("SetWebView2Path(", source)
+
+    def test_docking_sync_uses_browser_hwnd_bounds_and_effective_visibility(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        observe = source.split("procedure THarnessFrame.ObserveBrowserHost;", 1)[1].split("function THarnessFrame.BrowserHostReady", 1)[0]
+        self.assertIn("FBrowser.HandleGeneration", observe)
+        self.assertIn("FBrowser.HandleNeeded", observe)
+        self.assertIn("GetAncestor(Current.Window, GA_ROOT)", observe)
+        self.assertIn("IsWindowVisible(Current.Window)", observe)
+        self.assertIn("GetWindowRect(Current.Window, Current.ScreenBounds)", observe)
+        self.assertIn("csDestroying in ComponentState", observe)
+        sync = source.split("procedure THarnessFrame.SyncBrowserHost;", 1)[1].split("procedure THarnessFrame.EnsureBrowser;", 1)[0]
+        self.assertIn("Controller.Get_ParentWindow(ParentWindow)", sync)
+        self.assertIn("Controller.Set_ParentWindow(wireHWND(FBrowserHost.Window))", sync)
+        self.assertIn("ClientBounds: System.Types.TRect", sync)
+        self.assertIn("Bounds: Winapi.WebView2.tagRECT", sync)
+        self.assertIn("ClientBounds := FBrowser.ClientRect", sync)
+        for field in ("Left", "Top", "Right", "Bottom"):
+            self.assertIn(f"Bounds.{field} := ClientBounds.{field};", sync)
+        self.assertNotIn("\n    Bounds := FBrowser.ClientRect;", sync)
+        self.assertIn("Controller.Set_Bounds(Bounds)", sync)
+        self.assertIn("Controller.Set_IsVisible(Ord(FBrowserHost.Visible))", sync)
+        self.assertIn("Controller.NotifyParentWindowPositionChanged", sync)
+        self.assertIn("NativeUInt(ParentWindow)", sync)
+
+    def test_docking_recovery_is_deferred_bounded_and_does_not_restart_runtime(self):
+        source = (ROOT / "src/Everywhere.Window.pas").read_text(encoding="utf-8-sig")
+        sync = source.split("procedure THarnessFrame.SyncBrowserHost;", 1)[1].split("procedure THarnessFrame.EnsureBrowser;", 1)[0]
+        self.assertIn("GetTickCount64 - FHostChangedAt < BrowserDockSettleMs", sync)
+        self.assertIn("if not FHostRecoveryUsed", sync)
+        self.assertIn("FHostRecoveryUsed := True", sync)
+        self.assertIn("FHostSyncBlocked := True", sync)
+        self.assertIn("FCreatingGeneration <> FBrowserHost.Generation", sync)
+        self.assertIn("FResettingBrowser := True", sync)
+        self.assertIn("FResettingBrowser := False", sync)
+        for forbidden in ("FRuntime.Start", "FRuntime.Stop", "RestartClick(", "CloseBrowserProcess", "CreateWebView"):
+            self.assertNotIn(forbidden, sync)
+        callback = source.split("procedure THarnessFrame.BrowserCreated", 1)[1].split("procedure THarnessFrame.NavigationCompleted", 1)[0]
+        self.assertIn("$80004004", callback)  # E_ABORT while a docking HWND is destroyed
+        self.assertIn("FHostSyncPending := True", callback)
+        self.assertIn("or FResettingBrowser then Exit", callback)
+        self.assertNotIn("NavigatePending;", callback)
+        self.assertNotIn("FBrowser.CreateWebView", callback)
+        tick = source.split("procedure THarnessFrame.Tick", 1)[1].split("procedure THarnessFrame.StartClick", 1)[0]
+        self.assertLess(tick.index("ObserveBrowserHost;"), tick.index("SyncBrowserHost;"))
+        self.assertLess(tick.index("SyncBrowserHost;"), tick.index("EnsureBrowser;"))
+
     def test_protocol_test_program_exists_and_only_references_local_units(self):
         source = (ROOT / "tests" / "ProtocolTests.dpr").read_text(encoding="utf-8-sig")
         self.assertRegex(source, r"(?im)^\s*program\s+ProtocolTests\s*;")
@@ -117,7 +228,8 @@ class PackageContracts(unittest.TestCase):
             self.assertTrue(path.is_file(), relative)
 
     def test_source_distribution_contains_no_vendor_or_generated_binaries(self):
-        forbidden = {".bpl", ".dcp", ".dcu", ".dll", ".exe", ".lib", ".obj", ".bpi", ".hpp", ".h"}
+        # DCUs created by a local IDE Build are ignored by Git, not shipped.
+        forbidden = {".bpl", ".dcp", ".dll", ".exe", ".lib", ".obj", ".bpi", ".hpp", ".h"}
         files = [path for path in ROOT.rglob("*") if path.is_file() and "build" not in path.relative_to(ROOT).parts]
         self.assertEqual([str(path.relative_to(ROOT)) for path in files if path.suffix.lower() in forbidden], [])
 
